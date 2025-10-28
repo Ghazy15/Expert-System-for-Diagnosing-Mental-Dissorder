@@ -31,10 +31,13 @@
             background: #2b2b2b;
         }
         .log-panel.open {
-            max-height: 1000px; /* large enough to show contents */
+            max-height: 700px; /* tinggi log area */
             opacity: 1;
             padding: 12px;
+            overflow: auto;              /* ✅ scroll vertikal & horizontal */
+            white-space: nowrap;         /* ✅ cegah teks terpotong, tetap dalam 1 baris */
         }
+
         .log-details ul {
             color: #f1f1f1;
             font-family: 'Courier New', Courier, monospace;
@@ -51,13 +54,11 @@
         .log-details li:last-child { border-bottom: none; }
         .meta { color:#bdbdbd; font-size:0.9em; margin-bottom:8px; }
 
-        /* small badges for semantic colouring */
         .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.85em; margin-left:8px; background:#eee; color:#333; }
-        .badge-high { background:#c8e6c9; color:#1b5e20; } /* hijau */
-        .badge-mid  { background:#fff9c4; color:#6a4f00; } /* kuning */
-        .badge-low  { background:#ffcdd2; color:#7f0000; }  /* merah */
+        .badge-high { background:#c8e6c9; color:#1b5e20; }
+        .badge-mid  { background:#fff9c4; color:#6a4f00; }
+        .badge-low  { background:#ffcdd2; color:#7f0000; }
 
-        /* responsive */
         @media (max-width: 640px) {
             .container { padding: 14px; }
         }
@@ -90,7 +91,6 @@
         <div class="details" style="margin-top:14px;">
             <h2>Gejala yang Anda Masukkan:</h2>
             <ul>
-                {# inputs is a dict: {desc: cf_value} #}
                 {% for name, val in inputs.items() %}
                     <li>
                         {{ name }}
@@ -99,7 +99,6 @@
                             {% elif val >= 0.6 %} badge-mid
                             {% else %} badge-low
                             {% endif %}">
-                            {# tampilkan deskripsi state dari user_response (cf_map) jika ada #}
                             {% set key = val|string %}
                             {% if cf_map and key in cf_map %}
                                 {{ cf_map[key] }}
@@ -115,7 +114,6 @@
         {% if all_new_facts %}
             <div class="details" style="margin-top:12px;">
                 <h2>Semua Fakta Baru yang Ditemukan (Proses Inferensi)</h2>
-                <p>Daftar ini menampilkan semua hipotesis (gejala turunan dan diagnosa) yang berhasil dihitung oleh sistem.</p>
                 <ul>
                     {% for fact in all_new_facts %}
                         <li>
@@ -127,18 +125,6 @@
             </div>
         {% endif %}
 
-        {% if results %}
-            <div class="details" style="margin-top:12px;">
-                <h2>Detail Diagnosa Akhir:</h2>
-                <ul>
-                    {% for res in results %}
-                        <li><strong>{{ res.code }}:</strong> {{ res.name }} (CF: {{ res.cf_percent }}%)</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        {% endif %}
-
-        {# === Panel Log Collapsible === #}
         <div class="log-wrap">
             <button id="toggle-log" class="log-toggle" type="button" aria-expanded="false" aria-controls="log-panel">
                 <span class="arrow" id="arrow">▾</span>
@@ -146,15 +132,11 @@
             </button>
 
             <div id="log-panel" class="log-panel" role="region" aria-hidden="true" tabindex="-1">
-                <div class="meta">Klik tombol di atas untuk menutup/menampilkan log. (Hanya menampilkan trace proses inferensi.)</div>
+                <div class="meta">Klik tombol di atas untuk menutup/menampilkan log. (Anda bisa scroll ke kanan/kiri bila teks panjang.)</div>
                 <div class="log-details">
                     <ul>
                         {% for step in inference_log %}
-                            <li>
-                                {# basic styling by keywords: SUKSES / GAGAL / PROSES etc.
-                                   The server already prepares human-readable lines. #}
-                                {{ step }}
-                            </li>
+                            <li>{{ step }}</li>
                         {% endfor %}
                     </ul>
                 </div>
@@ -165,7 +147,6 @@
     </div>
 
     <script>
-        // collapse / slide logic
         const btn = document.getElementById('toggle-log');
         const panel = document.getElementById('log-panel');
         const arrow = document.getElementById('arrow');
@@ -179,15 +160,12 @@
                 btn.setAttribute('aria-expanded', 'false');
                 arrow.style.transform = 'rotate(0deg)';
                 btnText.textContent = 'Tampilkan Log Proses Inferensi';
-                // optional: scroll to top of panel container when closing
-                btn.scrollIntoView({behavior:'smooth', block:'center'});
             } else {
                 panel.classList.add('open');
                 panel.setAttribute('aria-hidden', 'false');
                 btn.setAttribute('aria-expanded', 'true');
                 arrow.style.transform = 'rotate(180deg)';
                 btnText.textContent = 'Sembunyikan Log Proses Inferensi';
-                // scroll so the panel is visible (smooth slide effect)
                 setTimeout(() => panel.scrollIntoView({behavior:'smooth', block:'start'}), 80);
             }
         });
