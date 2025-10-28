@@ -4,40 +4,41 @@
         "user_cf":0.0
     },
     {
-        "state":"pasti tidak",
+        "state":"Pasti tidak",
         "user_cf":0.1
     },
     {
-        "state":"hampir pasti tidak",
+        "state":"Hampir pasti tidak",
         "user_cf":0.2
     },
     {
-        "state":"kemungkinan besar tidak",
+        "state":"Kemungkinan besar tidak",
         "user_cf":0.3
     },
     {
-        "state":"mungkin tidak",
+        "state":"Mungkin tidak",
         "user_cf":0.4
     },
     {
-        "state":"kemungkinan kecil",
+        "state":"Kemungkinan kecil",
         "user_cf":0.5
     },
     {
-        "state":"mungkin",
+        "state":"Mungkin",
         "user_cf":0.6
     },
     {
-        "state":"kemungkinan besar",
+        "state":"Kemungkinan besar",
         "user_cf":0.7
     },
     {
-        "state":"hampir pasti",
+        "state":"Hampir pasti",
         "user_cf":0.8
     },
     {
-        "state":"pasti",
+        "state":"Pasti",
         "user_cf":1.0
     }
 
 ]
+
