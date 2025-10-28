@@ -144,23 +144,45 @@ def run_inference(user_facts):
     sorted_all_facts = sorted(final.items(), key=lambda x: x[1], reverse=True)
 
     inference_log = []
+    inference_log.append("--- MEMULAI PROSES INFERENSI ---")
+
+    # Fakta awal
     inference_log.append("--- Fakta Awal dari Pengguna ---")
     if not user_facts:
         inference_log.append("Tidak ada fakta yang diberikan pengguna.")
     else:
         for fact, cf in user_facts.items():
             desc = kb.get(fact, fact)
-            inference_log.append(f"FAKTA: ({fact}) {desc} dengan CF = {cf:.3f}")
+            inference_log.append(f"FAKTA: {fact} ({desc}) dengan CF = {cf:.3f}")
 
-    inference_log.append("--- PROSES INFERENSI ---")
+    # Proses inferensi per rule
+    inference_log.append("\n--- PROSES INFERENSI ---")
+    current_iter = None
+
     for t in engine.trace_log:
-        ant_pairs = ", ".join(f"{a}={cf:.2f}" for a, cf in zip(t['antecedents'], t['antecedent_eff_cfs']))
-        inference_log.append(
-            f"Proses-{t['iteration']}: IF {ant_pairs} -> {t['consequent']} | "
-            f"FaktaCF={t['cf_premis']:.3f}, RuleCF={t['rule_cf']:.3f}, Hasil={t['cf_conclusion']:.3f}"
-        )
+        if current_iter != t['iteration']:
+            current_iter = t['iteration']
+            inference_log.append(f"\n>>> ITERASI {current_iter}")
 
-    inference_log.append(" PROSES INFERENSI SELESAI ")
+        rule_name = t.get('rule_id', 'R?')
+        ant_str = " AND ".join(t['antecedents'])
+        inference_log.append(f"--- Memeriksa Aturan {rule_name}: IF ({ant_str}) THEN {t['consequent']} ---")
+
+        if len(t['antecedents']) == len(t['antecedent_eff_cfs']):
+            # tampilkan fakta dengan CF-nya
+            facts_info = ", ".join([f"{a}(CF={cf:.3f})" for a, cf in zip(t['antecedents'], t['antecedent_eff_cfs'])])
+            inference_log.append(f"-> SUKSES: Semua fakta prasyarat terpenuhi: ({facts_info})")
+            inference_log.append(f"-> Mencari CF minimal dari fakta: Min({t['cf_premis']:.3f})")
+            inference_log.append(
+                f"-> Menghitung CF baru: CF_baru = CF_min * CF_aturan = {t['cf_premis']:.3f} * {t['rule_cf']:.3f} = {t['cf_conclusion']:.3f}"
+            )
+            inference_log.append(f"-> Menetapkan CF baru untuk {t['consequent']} = {t['cf_conclusion']:.3f}")
+        else:
+            # jika antecedent tidak lengkap
+            missing = [a for a in t['antecedents'] if a not in user_facts]
+            inference_log.append(f"-> GAGAL: Fakta {', '.join(missing)} tidak ada di input pengguna.")
+
+    inference_log.append("\n--- PROSES INFERENSI SELESAI ---")
 
     return sorted_diagnoses, sorted_all_facts, inference_log
 
@@ -241,3 +263,4 @@ def diagnose():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
