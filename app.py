@@ -19,7 +19,6 @@ except FileNotFoundError:
     rules = []
 
 # --- Fungsi Helper untuk Certainty Factor ---
-# Fungsi ini tetap sama, sesuai dengan PDF baru (slide 24)
 def cf_combine(cf1, cf2):
     """
     Menggabungkan dua Certainty Factor (hanya untuk nilai positif
@@ -27,126 +26,91 @@ def cf_combine(cf1, cf2):
     """
     if cf1 >= 0 and cf2 >= 0:
         return cf1 + cf2 * (1 - cf1)
-    # Logika untuk CF negatif (jika ada)
-    elif cf1 < 0 and cf2 < 0:
-        return cf1 + cf2 * (1 + cf1)
-    else:
-        return (cf1 + cf2) / (1 - min(abs(cf1), abs(cf2)))
+    # Tambahkan logika lain jika ada CF negatif, 
+    # tapi jurnal ini hanya menggunakan CF positif.
+    return cf1 + cf2 * (1 - cf1)
 
-# --- (LOGIKA BARU) Mesin Inferensi Forward-Chaining ---
+# --- Logika Mesin Inferensi ---
 def run_inference(user_facts):
     """
-    Menjalankan mesin inferensi forward-chaining (iteratif)
-    berdasarkan logika dari PDF "M5 Ketidakpastian .pdf".
-    
-    Akan berulang sampai tidak ada fakta baru yang ditemukan.
+    Menjalankan mesin inferensi berdasarkan fakta dari pengguna.
+    Ini adalah implementasi single-pass non-chaining
+    sesuai perhitungan di jurnal.
     """
+    # 'hypotheses' akan menyimpan SEMUA fakta baru (Gxxx dan Mxxx)
+    hypotheses = {}
     
-    # 'facts' adalah memori kerja (working memory) kita.
-    # Dimulai dengan fakta dari pengguna.
-    facts = user_facts.copy()
-    
+    # === PERUBAHAN DIMULAI: Menambahkan list untuk log ===
     inference_log = []
     
-    # Catat fakta awal
+    # Tambahkan fakta awal dari pengguna ke log
     inference_log.append("--- FAKTA AWAL (dari Pengguna) ---")
-    if not facts:
+    if not user_facts:
         inference_log.append("Tidak ada fakta yang diberikan pengguna.")
-    for fact, cf in facts.items():
-        inference_log.append(f"FAKTA: {kb.get(fact, fact)} ({fact}) dengan CF = {cf:.3f}")
-
-    iteration_count = 0
+    for fact, cf in user_facts.items():
+        inference_log.append(f"FAKTA: {kb.get(fact, fact)} ({fact}) dengan CF = {cf}")
     
-    # --- Loop Iterasi Utama ---
-    # Terus berulang selama ada fakta baru yang ditemukan
-    while True:
-        iteration_count += 1
-        new_fact_found_this_iteration = False
-        inference_log.append(f"--- MEMULAI ITERASI ke-{iteration_count} ---")
+    inference_log.append("--- MEMULAI PROSES INFERENSI ---")
+    
+    for rule in rules:
+        antecedents = rule['if']
+        consequent = rule['then']
+        cf_rule = rule['cf']
+
+        inference_log.append(f"--- Memeriksa Aturan {rule['id']}: IF ({' AND '.join(antecedents)}) THEN {consequent} ---")
+
+        # Periksa apakah semua fakta untuk aturan ini ada di input user
+        can_fire = True
+        min_cf_evidence = 1.0
         
-        # Periksa setiap aturan dalam basis pengetahuan
-        for rule in rules:
-            antecedents = rule['if']
-            consequent = rule['then']
-            cf_rule = rule['cf']
+        antecedent_facts_cf = [] # Untuk log
+        
+        for fact in antecedents:
+            if fact not in user_facts:
+                can_fire = False
+                inference_log.append(f"-> GAGAL: Fakta {fact} ({kb.get(fact, fact)}) tidak ada di input pengguna.")
+                break # Hentikan pengecekan untuk aturan ini
             
-            log_prefix = f"--- Memeriksa Aturan {rule['id']}: IF ({' AND '.join(antecedents)}) THEN {consequent} ---"
+            # Kumpulkan CF untuk log
+            antecedent_facts_cf.append(f"{fact}(CF={user_facts[fact]})")
+            min_cf_evidence = min(min_cf_evidence, user_facts[fact])
 
-            # 1. Periksa apakah SEMUA anteseden (premis) ada di 'facts'
-            can_fire = True
-            min_cf_evidence = 1.0
-            antecedent_facts_cf_log = [] # Untuk log
-
-            for fact in antecedents:
-                if fact not in facts:
-                    can_fire = False
-                    # Tidak perlu log di sini, akan terlalu ramai.
-                    # Cukup log saat aturan GAGAL jika diperlukan.
-                    break # Hentikan pengecekan premis untuk aturan ini
-                
-                # Kumpulkan CF untuk log dan perhitungan Min
-                antecedent_facts_cf_log.append(f"{fact}(CF={facts[fact]:.3f})")
-                min_cf_evidence = min(min_cf_evidence, facts[fact])
-
-            # 2. Jika aturan GAGAL (premis tidak lengkap)
-            if not can_fire:
-                # Opsi: tambahkan log jika ingin lihat aturan yg gagal
-                # inference_log.append(f"{log_prefix} -> GAGAL: Premis tidak lengkap.")
-                continue # Lanjut ke aturan berikutnya
+        # Jika aturan bisa aktif, hitung CF
+        if can_fire:
+            inference_log.append(f"-> SUKSES: Semua fakta prasyarat terpenuhi: ({', '.join(antecedent_facts_cf)})")
+            inference_log.append(f"   -> Mencari CF minimal dari fakta: Min({min_cf_evidence:.3f})")
             
-            # 3. Jika aturan SUKSES (bisa aktif)
-            inference_log.append(log_prefix)
-            inference_log.append(f"-> SUKSES: Semua fakta prasyarat terpenuhi: ({', '.join(antecedent_facts_cf_log)})")
+            cf_new = min_cf_evidence * cf_rule
+            inference_log.append(f"   -> Menghitung CF baru: CF_baru = CF_min * CF_aturan = {min_cf_evidence:.3f} * {cf_rule} = {cf_new:.3f}")
             
-            # Logika 'AND' (premis majemuk) - Slide 33
-            inference_log.append(f"   -> Mencari CF minimal (logika 'AND'): Min = {min_cf_evidence:.3f}")
+            cf_old = hypotheses.get(consequent, 0.0)
             
-            # Hitung CF bukti baru
-            cf_new_evidence = min_cf_evidence * cf_rule
-            inference_log.append(f"   -> Menghitung CF baru: CF_baru = CF_min * CF_aturan = {min_cf_evidence:.3f} * {cf_rule} = {cf_new_evidence:.3f}")
-
-            # 4. Perbarui 'facts' (memori kerja)
-            cf_old = facts.get(consequent, 0.0)
-            
-            if cf_old == 0.0:
-                # Ini adalah fakta yang benar-benar baru
-                facts[consequent] = cf_new_evidence
-                new_fact_found_this_iteration = True
-                inference_log.append(f"   -> FAKTA BARU: Menetapkan CF untuk {consequent} = {facts[consequent]:.3f}")
+            if cf_old > 0:
+                # Kombinasikan jika hipotesis ini sudah ada
+                hypotheses[consequent] = cf_combine(cf_old, cf_new)
+                inference_log.append(f"   -> Menggabungkan CF untuk {consequent}: CF_combine(CF_lama={cf_old:.3f}, CF_baru={cf_new:.3f}) = {hypotheses[consequent]:.3f}")
             else:
-                # Fakta ini sudah ada, gunakan 'Rule Parallel' (Slide 24)
-                cf_combined = cf_combine(cf_old, cf_new_evidence)
-                inference_log.append(f"   -> Menggabungkan CF (Rule Paralel) untuk {consequent}: CF_combine(CF_lama={cf_old:.3f}, CF_baru={cf_new_evidence:.3f}) = {cf_combined:.3f}")
-                
-                # Cek apakah nilainya benar-benar berubah (menghindari loop tak terbatas)
-                if abs(cf_combined - cf_old) > 0.0001:
-                    facts[consequent] = cf_combined
-                    new_fact_found_this_iteration = True
-                    inference_log.append(f"   -> CF Diperbarui untuk {consequent} = {cf_combined:.3f}")
-                else:
-                    inference_log.append(f"   -> CF {consequent} tidak berubah.")
-
-        # --- Akhir dari satu iterasi ---
-        inference_log.append(f"--- Iterasi ke-{iteration_count} selesai. ---")
-
-        if not new_fact_found_this_iteration:
-            # Jika tidak ada fakta baru di seluruh iterasi ini, hentikan loop
-            inference_log.append("--- PROSES INFERENSI SELESAI (Tidak ada fakta baru ditemukan) ---")
-            break # Keluar dari 'while True'
-
-    # --- Persiapan Hasil ---
+                # Tetapkan sebagai fakta baru
+                hypotheses[consequent] = cf_new
+                inference_log.append(f"   -> Menetapkan CF baru untuk {consequent} = {hypotheses[consequent]:.3f}")
     
-    # 1. 'all_new_facts' adalah semua fakta di 'facts' KECUALI fakta awal dari user
-    hypotheses = {code: cf for code, cf in facts.items() if code not in user_facts}
-    sorted_all_facts = sorted(hypotheses.items(), key=lambda item: item[1], reverse=True)
-    
-    # 2. 'diagnoses' adalah fakta baru yang merupakan diagnosa (MXXX)
+    inference_log.append("--- PROSES INFERENSI SELESAI ---")
+    # === PERUBAHAN SELESAI ===
+
+    # Filter hanya untuk diagnosis akhir (MXXX)
     diagnoses = {code: cf for code, cf in hypotheses.items() if code.startswith('M')}
+    
+    # Urutkan diagnosa akhir berdasarkan nilai CF tertinggi
     sorted_diagnoses = sorted(diagnoses.items(), key=lambda item: item[1], reverse=True)
+    
+    # Urutkan SEMUA fakta baru (Gxxx dan Mxxx) untuk ditampilkan
+    sorted_all_facts = sorted(hypotheses.items(), key=lambda item: item[1], reverse=True)
 
+    # Kembalikan diagnosa akhir, semua fakta baru, DAN log inferensi
     return sorted_diagnoses, sorted_all_facts, inference_log
 
-# --- Rute Aplikasi Web (TIDAK BERUBAH) ---
+
+# --- Rute Aplikasi Web ---
 
 @app.route('/')
 def index():
@@ -181,7 +145,8 @@ def diagnose():
             user_facts[code] = cf_value
             user_inputs_display[kb.get(code, code)] = cf_value
 
-    # Jalankan mesin inferensi (sekarang menggunakan logika baru)
+    # === PERUBAHAN DIMULAI ===
+    # Jalankan mesin inferensi dan dapatkan ketiga list
     sorted_diagnoses, sorted_all_facts, inference_log = run_inference(user_facts)
     
     # Siapkan hasil untuk ditampilkan (Diagnosa Akhir - MXXX)
@@ -204,16 +169,15 @@ def diagnose():
     
     top_diagnosis = display_results[0] if display_results else None
 
-    # Kirim semua data ke template yang sama
     return render_template(
         'result.html', 
         results=display_results,
         top_diagnosis=top_diagnosis,
         inputs=user_inputs_display,
         all_new_facts=display_all_facts_list,
-        inference_log=inference_log
+        inference_log=inference_log  # Kirim list log baru ke template
     )
+    # === PERUBAHAN SELESAI ===
 
 if __name__ == '__main__':
-    # Jika menggunakan 'python app.py', ini akan berjalan
     app.run(debug=True)
