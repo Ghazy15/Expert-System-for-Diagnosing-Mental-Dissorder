@@ -1,37 +1,158 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Sistem Pakar Gangguan Mental</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
         h1 { color: #333; }
-        form { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .symptom { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .symptom label { flex-basis: 70%; }
-        .symptom select { flex-basis: 30%; padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
-        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-        button:hover { background-color: #0056b3; }
+        .card {
+            background-color: #fff;
+            padding: 18px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+        }
+        .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        select, button { padding:8px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; }
+        button.primary { background:#007bff; color:#fff; border:none; cursor:pointer; }
+        button.danger { background:#dc3545; color:#fff; border:none; cursor:pointer; }
+        button.primary:hover { background:#0056b3; }
+        button.danger:hover { background:#b02a37; }
+        #selected-list { margin-top:12px; display:flex; flex-direction:column; gap:10px; }
+        .selected-item { display:flex; gap:10px; align-items:center; padding:8px; border-radius:6px; background:#fafafa; border:1px solid #eee; }
+        .selected-item label { flex:1; font-weight:600; }
+        .note { color:#666; font-size:0.95em; margin-top:8px; }
+        .empty { color:#888; font-style:italic; }
     </style>
 </head>
 <body>
     <h1>Sistem Pakar Diagnosa Gangguan Mental</h1>
-    <p>Pilihlah gejala-gejala yang Anda alami sesuai dengan tingkat kepastian yang Anda rasakan.</p>
-    
-    <form action="/diagnose" method="post">
-        {% for code, desc in symptoms.items()|sort %}
-            <div class="symptom">
-                <label for="{{ code }}"><b></b> {{ desc }}</label>
-                <select name="{{ code }}" id="{{ code }}">
-                    {% for option in cf_options %}
-                        <option value="{{ option.value }}">{{ option.label }}</option>
+    <p>Pilih gejala terlebih dahulu, lalu tentukan tingkat keyakinan untuk setiap gejala yang dipilih.</p>
+
+    <div class="card">
+        <form id="diag-form" action="/diagnose" method="post">
+            <div class="controls">
+                <label for="symptom-select" style="min-width:120px;">Pilih gejala:</label>
+                <select id="symptom-select">
+                    <option value="" disabled selected>-- pilih gejala --</option>
+                    {% for code, desc in symptoms.items()|sort %}
+                        <option value="{{ code }}">{{ desc }}</option>
                     {% endfor %}
                 </select>
+
+                <button type="button" id="btn-add" class="primary">Tambah</button>
+                <div style="flex:1"></div>
+                <button type="submit" class="primary">Mulai Diagnosa</button>
             </div>
-        {% endfor %}
-        <br>
-        <button type="submit">Mulai Diagnosa</button>
-    </form>
+
+            <!-- Daftar gejala yang dipilih -->
+            <div id="selected-list" aria-live="polite">
+                <div class="empty">Belum ada gejala dipilih.</div>
+            </div>
+
+            <template id="item-template">
+                <div class="selected-item">
+                    <label class="sel-desc"></label>
+                    <select class="cf-select" name="">
+                        {% for option in cf_options %}
+                            <option value="{{ option.value }}">{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="remove-btn danger">Hapus</button>
+                </div>
+            </template>
+        </form>
+    </div>
+
+    <script>
+        // Elemen
+        const symptomSelect = document.getElementById('symptom-select');
+        const btnAdd = document.getElementById('btn-add');
+        const selectedList = document.getElementById('selected-list');
+        const template = document.getElementById('item-template');
+        const form = document.getElementById('diag-form');
+
+        // Utility: periksa jika select masih punya opsi valid
+        function hasValidOption(sel) {
+            for (let i=0;i<sel.options.length;i++) {
+                if (sel.options[i].value) return true;
+            }
+            return false;
+        }
+
+        // Tambah gejala terpilih ke daftar
+        btnAdd.addEventListener('click', () => {
+            const code = symptomSelect.value;
+            if (!code) return alert('Pilih gejala terlebih dahulu.');
+
+            // dapatkan teks deskripsi
+            const option = symptomSelect.querySelector(`option[value="${code}"]`);
+            if (!option) return;
+            const descWithCode = option.textContent;
+
+            // Buat item dari template
+            const clone = template.content.cloneNode(true);
+            const item = clone.querySelector('.selected-item');
+            const label = item.querySelector('.sel-desc');
+            const cfSelect = item.querySelector('.cf-select');
+            const removeBtn = item.querySelector('.remove-btn');
+
+            // set label & name of select -> important: name harus sama dengan kode agar dikirim ke server
+            label.textContent = descWithCode;
+            cfSelect.name = code;
+
+            // default: pilih opsi tertinggi dari cf_options? biarkan default (first option)
+            // Hapus placeholder empty message bila ada
+            const empty = selectedList.querySelector('.empty');
+            if (empty) empty.remove();
+
+            // append ke list
+            selectedList.appendChild(item);
+
+            // remove option dari symptomSelect supaya tidak bisa dipilih lagi
+            option.remove();
+
+            // Handler untuk tombol hapus
+            removeBtn.addEventListener('click', () => {
+                // sebelum menghapus, restore option ke symptomSelect (urutkan ulang agak rapi: append saja)
+                const restored = document.createElement('option');
+                restored.value = code;
+                restored.textContent = descWithCode;
+                symptomSelect.appendChild(restored);
+
+                // hapus item dari daftar
+                item.remove();
+
+                // Jika setelah hapus tidak ada item, tampilkan pesan empty
+                if (selectedList.children.length === 0) {
+                    const div = document.createElement('div');
+                    div.className = 'empty';
+                    div.textContent = 'Belum ada gejala dipilih.';
+                    selectedList.appendChild(div);
+                }
+            });
+        });
+
+        // Optional: mencegah submit jika tidak ada gejala dipilih
+        form.addEventListener('submit', (e) => {
+            // check whether any selects (with name attributes) exist inside selected-list
+            const chosen = selectedList.querySelectorAll('select[name]');
+            if (!chosen || chosen.length === 0) {
+                e.preventDefault();
+                alert('Silakan pilih minimal satu gejala sebelum melakukan diagnosa.');
+            }
+        });
+
+        // Accessibility: jika tidak ada opsi untuk dipilih, disable tombol tambah
+        function refreshAddState(){
+            const has = hasValidOption(symptomSelect);
+            btnAdd.disabled = !has;
+        }
+        symptomSelect.addEventListener('change', refreshAddState);
+        // init
+        refreshAddState();
+    </script>
 </body>
 </html>
