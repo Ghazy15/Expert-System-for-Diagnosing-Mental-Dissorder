@@ -1,6 +1,6 @@
 [
     {
-        "state":"Tidak ada",
+        "state":"Pilih tingkat kemungkinan jika mengalami gejala",
         "user_cf":0.0
     },
     {
@@ -39,4 +39,5 @@
         "state":"pasti",
         "user_cf":1.0
     }
+
 ]
