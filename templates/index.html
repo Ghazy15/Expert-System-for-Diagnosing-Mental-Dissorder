@@ -99,11 +99,10 @@
             const cfSelect = item.querySelector('.cf-select');
             const removeBtn = item.querySelector('.remove-btn');
 
-            // set label & name of select -> important: name harus sama dengan kode agar dikirim ke server
             label.textContent = descWithCode;
             cfSelect.name = code;
 
-            // default: pilih opsi tertinggi dari cf_options? biarkan default (first option)
+            // default: pilih opsi tertinggi dari cf_options
             // Hapus placeholder empty message bila ada
             const empty = selectedList.querySelector('.empty');
             if (empty) empty.remove();
@@ -116,7 +115,7 @@
 
             // Handler untuk tombol hapus
             removeBtn.addEventListener('click', () => {
-                // sebelum menghapus, restore option ke symptomSelect (urutkan ulang agak rapi: append saja)
+                // sebelum menghapus, restore option ke symptomSelect 
                 const restored = document.createElement('option');
                 restored.value = code;
                 restored.textContent = descWithCode;
@@ -135,7 +134,7 @@
             });
         });
 
-        // Optional: mencegah submit jika tidak ada gejala dipilih
+        // mencegah submit jika tidak ada gejala dipilih
         form.addEventListener('submit', (e) => {
             // check whether any selects (with name attributes) exist inside selected-list
             const chosen = selectedList.querySelectorAll('select[name]');
@@ -145,13 +144,12 @@
             }
         });
 
-        // Accessibility: jika tidak ada opsi untuk dipilih, disable tombol tambah
+        // jika tidak ada opsi untuk dipilih, disable tombol tambah
         function refreshAddState(){
             const has = hasValidOption(symptomSelect);
             btnAdd.disabled = !has;
         }
         symptomSelect.addEventListener('change', refreshAddState);
-        // init
         refreshAddState();
     </script>
 </body>
