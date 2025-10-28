@@ -68,7 +68,7 @@
             <h2>Gejala yang Anda Masukkan:</h2>
             <ul>
                 {% for name, val in inputs.items() %}
-                    <li>{{ name }} (Kepastian: {{ val }})</li>
+                    <li>{{ name }} (Nilai CF: {{ val }})</li>
                 {% endfor %}
             </ul>
         </div>
@@ -93,7 +93,7 @@
                 <h2>Detail Diagnosa Akhir (MXXX):</h2>
                 <ul>
                     {% for res in results %}
-                        <li><strong>{{ res.code }}:</strong> {{ res.name }} (Kepastian: {{ res.cf_percent }}%)</li>
+                        <li><strong>{{ res.code }}:</strong> {{ res.name }} (Nilai CF: {{ res.cf_percent }}%)</li>
                     {% endfor %}
                 </ul>
             </div>
@@ -125,4 +125,5 @@
         <a href="/">Kembali ke Halaman Utama</a>
     </div>
 </body>
+
 </html>
