@@ -6,81 +6,120 @@
     <title>Hasil Diagnosa</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
-        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
         h1, h2 { color: #333; }
         .conclusion { background-color: #e6f7ff; border: 1px solid #b3e0ff; padding: 15px; border-radius: 4px; }
-        .conclusion p { font-size: 1.2em; margin: 0; }
+        .conclusion p { font-size: 1.1em; margin: 0; }
         .details ul { list-style-type: none; padding-left: 0; }
         .details li { background-color: #f9f9f9; padding: 8px; border: 1px solid #eee; margin-bottom: 5px; }
         .details li strong { min-width: 60px; display: inline-block; }
         a { color: #007bff; text-decoration: none; display: inline-block; margin-top: 20px; }
         a:hover { text-decoration: underline; }
 
-        /* === CSS BARU UNTUK LOG === */
+        /* === CSS LOG & COLLAPSE === */
+        .log-wrap { margin-top: 18px; }
+        .log-toggle { cursor: pointer; display:inline-flex; gap:8px; align-items:center; padding:8px 12px; background:#007bff; color:#fff; border-radius:6px; border:none; }
+        .log-toggle .arrow { display:inline-block; transition: transform .25s ease; }
+        .log-panel {
+            overflow: hidden;
+            transition: max-height .35s ease, opacity .35s ease, padding .35s ease;
+            max-height: 0;
+            opacity: 0;
+            padding: 0 12px;
+            margin-top: 8px;
+            border-radius:6px;
+            background: #2b2b2b;
+        }
+        .log-panel.open {
+            max-height: 1000px; /* large enough to show contents */
+            opacity: 1;
+            padding: 12px;
+        }
         .log-details ul {
-            background-color: #2b2b2b;
             color: #f1f1f1;
-            padding: 15px;
-            border-radius: 5px;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 0.9em;
+            font-size: 0.95em;
             line-height: 1.6;
+            list-style:none;
+            margin:0;
+            padding:0;
         }
         .log-details li {
-            background-color: transparent;
-            border: none;
-            padding: 2px 0;
-            margin: 0;
-            color: #f1f1f1;
-            border-bottom: 1px dotted #555;
+            padding:6px 0;
+            border-bottom: 1px dotted rgba(255,255,255,0.08);
         }
-        .log-details li:last-child {
-            border-bottom: none;
-        }
-        .log-success { color: #a5d6a7; } /* Hijau muda */
-        .log-fail { color: #ef9a9a; } /* Merah muda */
-        .log-calc { color: #80cbc4; } /* Teal */
-        .log-rule { color: #ffd54f; font-weight: bold;} /* Kuning */
-        /* === AKHIR CSS BARU === */
+        .log-details li:last-child { border-bottom: none; }
+        .meta { color:#bdbdbd; font-size:0.9em; margin-bottom:8px; }
 
+        /* small badges for semantic colouring */
+        .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.85em; margin-left:8px; background:#eee; color:#333; }
+        .badge-high { background:#c8e6c9; color:#1b5e20; } /* hijau */
+        .badge-mid  { background:#fff9c4; color:#6a4f00; } /* kuning */
+        .badge-low  { background:#ffcdd2; color:#7f0000; }  /* merah */
+
+        /* responsive */
+        @media (max-width: 640px) {
+            .container { padding: 14px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Hasil Konsultasi</h1>
 
-        {% if top_diagnosis %}
+        {% if results and results|length > 0 %}
             <div class="conclusion">
-                <h2>Kesimpulan</h2>
-                <p>
-                    Berdasarkan gejala yang ada, kesimpulan utamanya adalah Anda memiliki kemungkinan 
-                    <strong>{{ top_diagnosis.name }}</strong> 
-                    dengan tingkat kepastian <strong>{{ top_diagnosis.cf_percent }}%</strong>.
-                </p>
+                <h2>Kesimpulan Diagnosa</h2>
+                <p>Berdasarkan gejala yang Anda masukkan, sistem mendeteksi kemungkinan berikut:</p>
+
+                <ul style="list-style-type: disc; padding-left: 20px; margin-top:10px;">
+                    {% for item in results %}
+                        <li style="margin-bottom:6px;">
+                            <strong>{{ item.name }}</strong> —
+                            tingkat kepastian <strong>{{ item.cf_percent }}%</strong>
+                        </li>
+                    {% endfor %}
+                </ul>
             </div>
         {% else %}
             <div class="conclusion">
-                <p>Tidak ada diagnosa yang dapat disimpulkan berdasarkan gejala yang Anda berikan.</p>
+                <p>Anda Tidak Memiliki Gangguan Mental.</p>
             </div>
         {% endif %}
 
-        <div class="details">
+        <div class="details" style="margin-top:14px;">
             <h2>Gejala yang Anda Masukkan:</h2>
             <ul>
+                {# inputs is a dict: {desc: cf_value} #}
                 {% for name, val in inputs.items() %}
-                    <li>{{ name }} (Nilai CF: {{ val }})</li>
+                    <li>
+                        {{ name }}
+                        <span class="badge
+                            {% if val >= 0.8 %} badge-high
+                            {% elif val >= 0.6 %} badge-mid
+                            {% else %} badge-low
+                            {% endif %}">
+                            {# tampilkan deskripsi state dari user_response (cf_map) jika ada #}
+                            {% set key = val|string %}
+                            {% if cf_map and key in cf_map %}
+                                {{ cf_map[key] }}
+                            {% else %}
+                                {{ ("%.3f"|format(val)) }}
+                            {% endif %}
+                        </span>
+                    </li>
                 {% endfor %}
             </ul>
         </div>
-        
+
         {% if all_new_facts %}
-            <div class="details">
+            <div class="details" style="margin-top:12px;">
                 <h2>Semua Fakta Baru yang Ditemukan (Proses Inferensi)</h2>
-                <p>Daftar ini menampilkan semua hipotesis (gejala turunan dan diagnosa) yang berhasil dihitung oleh sistem, mirip dengan "Tabel 6" pada jurnal.</p>
+                <p>Daftar ini menampilkan semua hipotesis (gejala turunan dan diagnosa) yang berhasil dihitung oleh sistem.</p>
                 <ul>
                     {% for fact in all_new_facts %}
                         <li>
-                            <strong>{{ fact.code }}:</strong> {{ fact.name }} 
+                            <strong>{{ fact.code }}:</strong> {{ fact.name }}
                             (Nilai CF: {{ "%.3f"|format(fact.cf_value) }})
                         </li>
                     {% endfor %}
@@ -89,41 +128,69 @@
         {% endif %}
 
         {% if results %}
-            <div class="details">
-                <h2>Detail Diagnosa Akhir (MXXX):</h2>
+            <div class="details" style="margin-top:12px;">
+                <h2>Detail Diagnosa Akhir:</h2>
                 <ul>
                     {% for res in results %}
-                        <li><strong>{{ res.code }}:</strong> {{ res.name }} (Nilai CF: {{ res.cf_percent }}%)</li>
+                        <li><strong>{{ res.code }}:</strong> {{ res.name }} (CF: {{ res.cf_percent }}%)</li>
                     {% endfor %}
                 </ul>
             </div>
         {% endif %}
 
-        {% if inference_log %}
-            <div class="details log-details">
-                <h2>Log Proses Inferensi (Pelacakan)</h2>
-                <p>Ini adalah jejak langkah-demi-langkah yang diambil oleh mesin inferensi untuk mendapatkan kesimpulan.</p>
-                <ul>
-                    {% for step in inference_log %}
-                        <li>
-                            {% if "SUKSES" in step %}
-                                <span class="log-success">{{ step }}</span>
-                            {% elif "GAGAL" in step %}
-                                <span class="log-fail">{{ step }}</span>
-                            {% elif "Mencari" in step or "Menghitung" in step or "Menggabungkan" in step or "Menetapkan" in step %}
-                                <span class="log-calc">{{ step }}</span>
-                            {% elif "---" in step or "FAKTA:" in step %}
-                                <span class="log-rule">{{ step }}</span>
-                            {% else %}
+        {# === Panel Log Collapsible === #}
+        <div class="log-wrap">
+            <button id="toggle-log" class="log-toggle" type="button" aria-expanded="false" aria-controls="log-panel">
+                <span class="arrow" id="arrow">▾</span>
+                <span id="btn-text">Tampilkan Log Proses Inferensi</span>
+            </button>
+
+            <div id="log-panel" class="log-panel" role="region" aria-hidden="true" tabindex="-1">
+                <div class="meta">Klik tombol di atas untuk menutup/menampilkan log. (Hanya menampilkan trace proses inferensi.)</div>
+                <div class="log-details">
+                    <ul>
+                        {% for step in inference_log %}
+                            <li>
+                                {# basic styling by keywords: SUKSES / GAGAL / PROSES etc.
+                                   The server already prepares human-readable lines. #}
                                 {{ step }}
-                            {% endif %}
-                        </li>
-                    {% endfor %}
-                </ul>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
-        {% endif %}
-        <a href="/">Kembali ke Halaman Utama</a>
-    </div>
-</body>
+        </div>
 
+        <a href="/" style="display:inline-block; margin-top:18px;">Kembali ke Halaman Utama</a>
+    </div>
+
+    <script>
+        // collapse / slide logic
+        const btn = document.getElementById('toggle-log');
+        const panel = document.getElementById('log-panel');
+        const arrow = document.getElementById('arrow');
+        const btnText = document.getElementById('btn-text');
+
+        btn.addEventListener('click', () => {
+            const isOpen = panel.classList.contains('open');
+            if (isOpen) {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                btn.setAttribute('aria-expanded', 'false');
+                arrow.style.transform = 'rotate(0deg)';
+                btnText.textContent = 'Tampilkan Log Proses Inferensi';
+                // optional: scroll to top of panel container when closing
+                btn.scrollIntoView({behavior:'smooth', block:'center'});
+            } else {
+                panel.classList.add('open');
+                panel.setAttribute('aria-hidden', 'false');
+                btn.setAttribute('aria-expanded', 'true');
+                arrow.style.transform = 'rotate(180deg)';
+                btnText.textContent = 'Sembunyikan Log Proses Inferensi';
+                // scroll so the panel is visible (smooth slide effect)
+                setTimeout(() => panel.scrollIntoView({behavior:'smooth', block:'start'}), 80);
+            }
+        });
+    </script>
+</body>
 </html>
