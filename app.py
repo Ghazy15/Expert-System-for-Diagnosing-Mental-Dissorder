@@ -1,187 +1,152 @@
 import json
-import os
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
 # --- Muat Basis Pengetahuan dan Aturan ---
-# Menggunakan metode loading yang aman untuk Flask
 try:
-    with open('knowledge_base.json', 'r', encoding='utf-8') as f:
+    with open('knowledge_base.json', 'r') as f:
         kb = json.load(f)
 except FileNotFoundError:
     print("ERROR: File 'knowledge_base.json' tidak ditemukan.")
     kb = {}
 
 try:
-    with open('rules.json', 'r', encoding='utf-8') as f:
+    with open('rules.json', 'r') as f:
         rules = json.load(f)
 except FileNotFoundError:
     print("ERROR: File 'rules.json' tidak ditemukan.")
     rules = []
 
-try:
-    # Memuat user_response.json (file baru Anda) untuk dropdown CF
-    with open('user_response.json', 'r', encoding='utf-8') as f:
-        user_response = json.load(f)
-except FileNotFoundError:
-    print("ERROR: File 'user_response.json' tidak ditemukan. Menggunakan fallback.")
-    user_response = [
-        {"state": "Kemungkinan Kecil", "user_cf": 0.5},
-        {"state": "Mungkin", "user_cf": 0.6},
-        {"state": "Kemungkinan Besar", "user_cf": 0.7},
-        {"state": "Hampir Pasti", "user_cf": 0.8},
-        {"state": "Pasti", "user_cf": 1.0}
-    ]
-
-
-# --- ======================================================= ---
-# --- KODE KELAS INFERENSI BARU ANDA (TELAH DIINTEGRASIKAN) ---
-# --- ======================================================= ---
-class SequentialForwardChaining:
-    # (Perbaikan: _init_ -> __init__)
-    def __init__(self, rules, default_operator="AND", max_iter=100):
-        self.rules = rules
-        self.default_operator = default_operator.upper()
-        self.max_iter = max_iter
-        self.trace_log = []
-
-    def infer(self, user_facts):
-        facts_meta = {}
-        for code, cf in user_facts.items():
-            facts_meta[code] = {"cf": float(cf), "source": "user", "gen": 0}
-
-        changed = True
-        iteration = 0
-        while changed and iteration < self.max_iter:
-            iteration += 1
-            changed = False
-            # Snapshot MENGGUNAKAN fakta dari iterasi SEBELUMNYA
-            snapshot = {k: v.copy() for k, v in facts_meta.items()}
-            new_meta = {} # Fakta baru yang ditemukan di iterasi INI
-
-            for rule in self.rules:
-                antecedents = rule.get("if") or rule.get("antecedent") or []
-                consequent = rule.get("then") or rule.get("consequent")
-                if not consequent or not antecedents:
-                    continue
-
-                operator = (rule.get("operator") or self.default_operator).upper()
-                rule_cf = float(rule.get("cf", 1.0))
-
-                # Pastikan semua antecedent sudah ada di fakta (snapshot)
-                if not all(a in snapshot for a in antecedents):
-                    continue # Lewati aturan ini jika premis tidak lengkap
-
-                # --- INI ADALAH LOGIKA KUNCI ANDA ---
-                eff_cfs = []
-                for a in antecedents:
-                    meta = snapshot[a]
-                    # Jika antecedent hasil dari rule sebelumnya DAN user juga beri CF,
-                    # lakukan perkalian sekuensial
-                    if meta["source"] == "rule" and a in user_facts:
-                         # Logika: CF_derived * CF_user
-                        eff = meta["cf"] * user_facts[a]
-                    else:
-                        # Jika hanya fakta user, atau fakta turunan murni
-                        eff = meta["cf"]
-                    eff_cfs.append(eff)
-                # --- AKHIR LOGIKA KUNCI ---
-
-                cf_premis = min(eff_cfs) if operator == "AND" else max(eff_cfs)
-                cf_conclusion = cf_premis * rule_cf
-
-                # Logika Paralel: Ambil CF tertinggi jika >1 aturan menghasilkan kesimpulan yg sama
-                prev = new_meta.get(consequent)
-                if (prev is None) or (cf_conclusion > prev["cf"]):
-                    new_meta[consequent] = {
-                        "cf": round(cf_conclusion, 6),
-                        "source": "rule",
-                        "gen": iteration, # Tandai dari iterasi ke berapa
-                    }
-
-                # Tambahkan ke log pelacakan (trace_log)
-                self.trace_log.append({
-                    "iteration": iteration,
-                    "rule_id": rule.get("id"),
-                    "antecedents": antecedents,
-                    "antecedent_eff_cfs": eff_cfs,
-                    "cf_premis": cf_premis,
-                    "rule_cf": rule_cf,
-                    "consequent": consequent,
-                    "cf_conclusion": cf_conclusion,
-                })
-
-            # Merge hasil baru dari iterasi ini ke fakta utama
-            for cons, meta in new_meta.items():
-                old = facts_meta.get(cons)
-                # Jika fakta ini benar-benar baru, atau nilainya berubah
-                if (old is None) or (abs(meta["cf"] - old["cf"]) > 1e-9):
-                    facts_meta[cons] = meta
-                    changed = True # Tandai untuk lanjut ke iterasi berikutnya
-
-        # hasil akhir (hanya fakta turunan yang nilainya beda dari input user)
-        final_derived_facts = {
-            k: round(v["cf"], 6)
-            for k, v in facts_meta.items()
-            if v["source"] == "rule" and abs(v["cf"] - user_facts.get(k, -1)) > 1e-9
-        }
-        return final_derived_facts
-
-# --- ======================================================= ---
-# --- FUNGSI HELPER UNTUK FORMAT LOG (BARU) ---
-# --- ======================================================= ---
-
-def format_inference_log(raw_log, user_facts, kb):
+# --- Fungsi Helper untuk Certainty Factor ---
+# Fungsi ini tetap sama, sesuai dengan PDF baru (slide 24)
+def cf_combine(cf1, cf2):
     """
-    Mengubah trace_log (list of dicts) dari class
-    menjadi list of strings yang bisa dibaca oleh result.html
+    Menggabungkan dua Certainty Factor (hanya untuk nilai positif
+    sesuai contoh di jurnal).
     """
-    log_strings = []
-    log_strings.append("--- FAKTA AWAL (dari Pengguna) ---")
-    if not user_facts:
-        log_strings.append("Tidak ada fakta yang diberikan pengguna.")
-    for fact, cf in user_facts.items():
-        log_strings.append(f"FAKTA: {kb.get(fact, fact)} ({fact}) dengan CF = {cf:.3f}")
+    if cf1 >= 0 and cf2 >= 0:
+        return cf1 + cf2 * (1 - cf1)
+    # Logika untuk CF negatif (jika ada)
+    elif cf1 < 0 and cf2 < 0:
+        return cf1 + cf2 * (1 + cf1)
+    else:
+        return (cf1 + cf2) / (1 - min(abs(cf1), abs(cf2)))
+
+# --- (LOGIKA BARU) Mesin Inferensi Forward-Chaining ---
+def run_inference(user_facts):
+    """
+    Menjalankan mesin inferensi forward-chaining (iteratif)
+    berdasarkan logika dari PDF "M5 Ketidakpastian .pdf".
     
-    log_strings.append("\n--- MEMULAI PROSES INFERENSI (FORWARD CHAINING) ---")
-    log_strings.append("--- Logika Premis: CF_eff = (CF_derived * CF_user) atau CF_saja ---")
+    Akan berulang sampai tidak ada fakta baru yang ditemukan.
+    """
+    
+    # 'facts' adalah memori kerja (working memory) kita.
+    # Dimulai dengan fakta dari pengguna.
+    facts = user_facts.copy()
+    
+    inference_log = []
+    
+    # Catat fakta awal
+    inference_log.append("--- FAKTA AWAL (dari Pengguna) ---")
+    if not facts:
+        inference_log.append("Tidak ada fakta yang diberikan pengguna.")
+    for fact, cf in facts.items():
+        inference_log.append(f"FAKTA: {kb.get(fact, fact)} ({fact}) dengan CF = {cf:.3f}")
 
-    current_iter = 0
-    if not raw_log:
-        log_strings.append("\nTidak ada aturan yang dieksekusi.")
+    iteration_count = 0
+    
+    # --- Loop Iterasi Utama ---
+    # Terus berulang selama ada fakta baru yang ditemukan
+    while True:
+        iteration_count += 1
+        new_fact_found_this_iteration = False
+        inference_log.append(f"--- MEMULAI ITERASI ke-{iteration_count} ---")
         
-    for entry in raw_log:
-        if entry['iteration'] != current_iter:
-            # Jika ini pass baru, tambahkan header
-            current_iter = entry['iteration']
-            log_strings.append(f"\n--- PASS {current_iter} ---")
-        
-        # Log pengecekan aturan
-        rule_id = entry['rule_id']
-        consequent = entry['consequent']
-        log_strings.append(f"--- Memeriksa Aturan {rule_id}: IF ({' AND '.join(entry['antecedents'])}) THEN {consequent} ---")
-        
-        # Log premis
-        for i, ante in enumerate(entry['antecedents']):
-            log_strings.append(f"   -> Premis {ante}: CF efektif dihitung = {entry['antecedent_eff_cfs'][i]:.3f}")
-        
-        # Log kesimpulan
-        log_strings.append(f"-> SUKSES: Aturan {rule_id} AKTIF.")
-        log_strings.append(f"   -> CF_premis (Min) = {entry['cf_premis']:.3f}")
-        log_strings.append(f"   -> CF_aturan = {entry['rule_cf']:.3f}")
-        log_strings.append(f"   -> CF_baru_dihitung = {entry['cf_conclusion']:.3f}")
-        log_strings.append(f"   -> (Mencoba memperbarui {consequent} dengan CF = {entry['cf_conclusion']:.3f})")
+        # Periksa setiap aturan dalam basis pengetahuan
+        for rule in rules:
+            antecedents = rule['if']
+            consequent = rule['then']
+            cf_rule = rule['cf']
+            
+            log_prefix = f"--- Memeriksa Aturan {rule['id']}: IF ({' AND '.join(antecedents)}) THEN {consequent} ---"
 
-    if current_iter > 0:
-        log_strings.append(f"\n--- PASS {current_iter + 1} ---")
-        log_strings.append("Tidak ada aturan baru yang dapat diaktifkan. Proses inferensi selesai.")
-        
-    return log_strings
+            # 1. Periksa apakah SEMUA anteseden (premis) ada di 'facts'
+            can_fire = True
+            min_cf_evidence = 1.0
+            antecedent_facts_cf_log = [] # Untuk log
 
-# --- ======================================================= ---
-# --- RUTE APLIKASI WEB FLASK (TELAH DIMODIFIKASI) ---
-# --- ======================================================= ---
+            for fact in antecedents:
+                if fact not in facts:
+                    can_fire = False
+                    # Tidak perlu log di sini, akan terlalu ramai.
+                    # Cukup log saat aturan GAGAL jika diperlukan.
+                    break # Hentikan pengecekan premis untuk aturan ini
+                
+                # Kumpulkan CF untuk log dan perhitungan Min
+                antecedent_facts_cf_log.append(f"{fact}(CF={facts[fact]:.3f})")
+                min_cf_evidence = min(min_cf_evidence, facts[fact])
+
+            # 2. Jika aturan GAGAL (premis tidak lengkap)
+            if not can_fire:
+                # Opsi: tambahkan log jika ingin lihat aturan yg gagal
+                # inference_log.append(f"{log_prefix} -> GAGAL: Premis tidak lengkap.")
+                continue # Lanjut ke aturan berikutnya
+            
+            # 3. Jika aturan SUKSES (bisa aktif)
+            inference_log.append(log_prefix)
+            inference_log.append(f"-> SUKSES: Semua fakta prasyarat terpenuhi: ({', '.join(antecedent_facts_cf_log)})")
+            
+            # Logika 'AND' (premis majemuk) - Slide 33
+            inference_log.append(f"   -> Mencari CF minimal (logika 'AND'): Min = {min_cf_evidence:.3f}")
+            
+            # Hitung CF bukti baru
+            cf_new_evidence = min_cf_evidence * cf_rule
+            inference_log.append(f"   -> Menghitung CF baru: CF_baru = CF_min * CF_aturan = {min_cf_evidence:.3f} * {cf_rule} = {cf_new_evidence:.3f}")
+
+            # 4. Perbarui 'facts' (memori kerja)
+            cf_old = facts.get(consequent, 0.0)
+            
+            if cf_old == 0.0:
+                # Ini adalah fakta yang benar-benar baru
+                facts[consequent] = cf_new_evidence
+                new_fact_found_this_iteration = True
+                inference_log.append(f"   -> FAKTA BARU: Menetapkan CF untuk {consequent} = {facts[consequent]:.3f}")
+            else:
+                # Fakta ini sudah ada, gunakan 'Rule Parallel' (Slide 24)
+                cf_combined = cf_combine(cf_old, cf_new_evidence)
+                inference_log.append(f"   -> Menggabungkan CF (Rule Paralel) untuk {consequent}: CF_combine(CF_lama={cf_old:.3f}, CF_baru={cf_new_evidence:.3f}) = {cf_combined:.3f}")
+                
+                # Cek apakah nilainya benar-benar berubah (menghindari loop tak terbatas)
+                if abs(cf_combined - cf_old) > 0.0001:
+                    facts[consequent] = cf_combined
+                    new_fact_found_this_iteration = True
+                    inference_log.append(f"   -> CF Diperbarui untuk {consequent} = {cf_combined:.3f}")
+                else:
+                    inference_log.append(f"   -> CF {consequent} tidak berubah.")
+
+        # --- Akhir dari satu iterasi ---
+        inference_log.append(f"--- Iterasi ke-{iteration_count} selesai. ---")
+
+        if not new_fact_found_this_iteration:
+            # Jika tidak ada fakta baru di seluruh iterasi ini, hentikan loop
+            inference_log.append("--- PROSES INFERENSI SELESAI (Tidak ada fakta baru ditemukan) ---")
+            break # Keluar dari 'while True'
+
+    # --- Persiapan Hasil ---
+    
+    # 1. 'all_new_facts' adalah semua fakta di 'facts' KECUALI fakta awal dari user
+    hypotheses = {code: cf for code, cf in facts.items() if code not in user_facts}
+    sorted_all_facts = sorted(hypotheses.items(), key=lambda item: item[1], reverse=True)
+    
+    # 2. 'diagnoses' adalah fakta baru yang merupakan diagnosa (MXXX)
+    diagnoses = {code: cf for code, cf in hypotheses.items() if code.startswith('M')}
+    sorted_diagnoses = sorted(diagnoses.items(), key=lambda item: item[1], reverse=True)
+
+    return sorted_diagnoses, sorted_all_facts, inference_log
+
+# --- Rute Aplikasi Web (TIDAK BERUBAH) ---
 
 @app.route('/')
 def index():
@@ -190,17 +155,15 @@ def index():
     # Ambil hanya gejala (GXXX) dari knowledge base
     symptoms = {code: desc for code, desc in kb.items() if code.startswith('G')}
     
-    # --- PERUBAHAN ---
-    # Gunakan 'user_response.json' untuk opsi CF
-    cf_options = []
-    for item in user_response:
-        cf_options.append({
-            "label": f"{item['state']} ({item['user_cf']})",
-            "value": float(item['user_cf'])
-        })
-    # Pastikan opsi 0.0 ada di paling atas
-    if not any(opt['value'] == 0.0 for opt in cf_options):
-         cf_options.insert(0, {"label": "Tidak yakin / Tidak ada (0.0)", "value": 0.0})
+    # Opsi CF berdasarkan Tabel 3 di jurnal
+    cf_options = [
+        {"label": "Tidak yakin / Tidak ada", "value": 0.0},
+        {"label": "Kemungkinan kecil (0.5)", "value": 0.5},
+        {"label": "Mungkin (0.6)", "value": 0.6},
+        {"label": "Kemungkinan besar (0.7)", "value": 0.7},
+        {"label": "Hampir pasti (0.8)", "value": 0.8},
+        {"label": "Pasti (1.0)", "value": 1.0}
+    ]
     
     return render_template('index.html', symptoms=symptoms, cf_options=cf_options)
 
@@ -218,40 +181,10 @@ def diagnose():
             user_facts[code] = cf_value
             user_inputs_display[kb.get(code, code)] = cf_value
 
-    # --- PERUBAHAN: MENGGUNAKAN MESIN INFERENSI BARU ---
+    # Jalankan mesin inferensi (sekarang menggunakan logika baru)
+    sorted_diagnoses, sorted_all_facts, inference_log = run_inference(user_facts)
     
-    # 1. Inisialisasi engine dengan aturan
-    engine = SequentialForwardChaining(rules)
-    
-    # 2. Jalankan inferensi
-    derived_facts_map = engine.infer(user_facts)
-    
-    # 3. Ambil log mentah (list of dicts)
-    raw_inference_log = engine.trace_log
-    
-    # 4. Format log agar bisa dibaca template
-    inference_log_strings = format_inference_log(raw_inference_log, user_facts, kb)
-    
-    # --- AKHIR PERUBAHAN ---
-
-    # Siapkan hasil untuk ditampilkan
-    
-    # 1. Siapkan daftar SEMUA FAKTA BARU (GXXX dan MXXX)
-    sorted_all_facts = sorted(derived_facts_map.items(), key=lambda item: item[1], reverse=True)
-    display_all_facts_list = []
-    for code, cf in sorted_all_facts:
-        display_all_facts_list.append({
-            "code": code,
-            "name": kb.get(code, code),
-            "cf_value": cf
-        })
-
-    # 2. Siapkan daftar Diagnosa Akhir (hanya MXXX)
-    diagnoses = {
-        code: cf for code, cf in derived_facts_map.items() 
-        if code.startswith('M')
-    }
-    sorted_diagnoses = sorted(diagnoses.items(), key=lambda item: item[1], reverse=True)
+    # Siapkan hasil untuk ditampilkan (Diagnosa Akhir - MXXX)
     display_results = []
     for code, cf in sorted_diagnoses:
         display_results.append({
@@ -260,17 +193,27 @@ def diagnose():
             "cf_percent": round(cf * 100, 2)
         })
         
-    # 3. Dapatkan diagnosa teratas
+    # Siapkan daftar SEMUA FAKTA BARU (GXXX dan MXXX)
+    display_all_facts_list = []
+    for code, cf in sorted_all_facts:
+        display_all_facts_list.append({
+            "code": code,
+            "name": kb.get(code, code),
+            "cf_value": cf  # Kita kirim nilai CF mentah (misal 0.455)
+        })
+    
     top_diagnosis = display_results[0] if display_results else None
 
+    # Kirim semua data ke template yang sama
     return render_template(
         'result.html', 
         results=display_results,
         top_diagnosis=top_diagnosis,
         inputs=user_inputs_display,
         all_new_facts=display_all_facts_list,
-        inference_log=inference_log_strings  # Kirim log yang sudah diformat
+        inference_log=inference_log
     )
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Jika menggunakan 'python app.py', ini akan berjalan
+    app.run(debug=True)
