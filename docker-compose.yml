@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  # Nama layanan kita, bisa apa saja
+  web:
+    # Perintahkan Docker Compose untuk membangun image
+    # dari Dockerfile di direktori saat ini ('.')
+    build: .
+    
+    # Petakan port 8080 di komputer Anda (HOST)
+    # ke port 5000 di dalam container (CONTAINER)
+    ports:
+      - "8080:5000"
+      
+    # Selalu restart container jika berhenti (kecuali di-stop manual)
+    restart: unless-stopped
