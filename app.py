@@ -215,13 +215,28 @@ def diagnose():
 
     top_diagnosis = display_results[0] if display_results else None
 
+    cf_map = {}
+    if isinstance(user_response, list):
+        for item in user_response:
+            try:
+                key = str(float(item.get("user_cf", 0.0)))
+            except Exception:
+                key = str(item.get("user_cf"))
+            cf_map[key] = item.get("state", str(item.get("user_cf")))
+
+    high_threshold = 0.8
+    mid_threshold = 0.6
+
     return render_template(
         'result.html',
         results=display_results,
         top_diagnosis=top_diagnosis,
         inputs=user_inputs_display,
         all_new_facts=display_all_facts_list,
-        inference_log=inference_log
+        inference_log=inference_log,
+        cf_map=cf_map,
+        high_thresh=high_threshold,
+        mid_thresh=mid_threshold
     )
 
 if __name__ == '__main__':
