@@ -22,7 +22,7 @@
     <form action="/diagnose" method="post">
         {% for code, desc in symptoms.items()|sort %}
             <div class="symptom">
-                <label for="{{ code }}"><b>{{ code }}:</b> {{ desc }}</label>
+                <label for="{{ code }}"><b></b> {{ desc }}</label>
                 <select name="{{ code }}" id="{{ code }}">
                     {% for option in cf_options %}
                         <option value="{{ option.value }}">{{ option.label }}</option>
